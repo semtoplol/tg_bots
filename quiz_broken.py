@@ -53,17 +53,31 @@ ANSWERS_YES = ["👍 Абсолютно верно! 👍", "👏 Вы правы
 users = {}
 
 
+def decode_round(dict):
+    if dict.get('type') == 'Round':
+        r = Round()
+        r.money = dict.get('money')
+        r.questions = dict.get('questions')
+        return r
+    else:
+        return dict
+
+
+def encode_round(round):
+    return {'money': round.money, 'question': round.questions, 'type': round}
+
+
 # запись общего списка вопросов в файл
 def write_file():
     with open(USER_DATA, "w") as file:
-        json.dump(users, file)
+        json.dump(users, file, default=encode_round)
 
 
 def read_user_data():
     global users
     if os.path.getsize(USER_DATA) > 0:
         with open(USER_DATA) as file:
-            users = json.load(file)
+            users = json.load(file, object_hook=decode_round)
             print(users)
             return users
 
@@ -73,7 +87,7 @@ def read_questions():
     if os.path.getsize(QUESTIONS) > 0:
         with open(QUESTIONS) as file:
             # загружаем json из файла    
-            data = json.load(file)
+            data = json.load(file, object_hook=decode_round)
             print(data)
             return data
     else:
@@ -162,6 +176,9 @@ def answer_keyboard(answers):
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(message.chat.id, "Привет, хочешь стать миллионером? 🤑", reply_markup=control_keyboard())
+    global users
+    users[str(message.chat.id)] = {}
+    write_file()
 
 
 # обработчик команды help
@@ -183,16 +200,20 @@ def get_user_data(chat_id):
         return int(money), int(rounds), new_round
     else:
         return 0, 0, Round()
+    write_file()
 
 
 # сохранение данных пользователя (общая сумма денег, число сыгранных игр и текущий раунд) в словарь пользователей по ключу id чата
 def set_user_data(chat_id, money, rounds, new_round):
     users[str(chat_id)] = {"money": int(money), "new_round": new_round, "rounds": rounds}
+    write_file()
+    read_user_data()
 
 
 # обработчик всех запросов обратного вызова (всех нажатий на встроенные кнопки)
 @bot.callback_query_handler(func=lambda call: True)
 def handler(call):
+    read_user_data()
     # получение данных текущего пользователя: все деньги, количество сыгранных раундов, текущий раунд
     all_money, rounds, new_round = get_user_data(call.message.chat.id)
     # кнопка "Новая игра"
@@ -251,7 +272,7 @@ def handler(call):
                 # добавляем количество игр, текущий раунд ставим в None, деньги не добавляем
                 new_round = None
     # сохраняем все данные
-    write_file(read_questions())
+    write_file()
     set_user_data(call.message.chat.id, all_money, rounds, new_round)
     bot.answer_callback_query(call.id)
 
